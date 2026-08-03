@@ -181,6 +181,20 @@ RAW_OHLCV_PATH = DATA_RAW / "ohlcv_raw.parquet"  # -> Path
 ROWS_PER_YEAR_TOLERANCE = 10  # -> int
 
 # ---------------------------------------------------------------------------
-# 10. 재현성
+# 10. Day 2 산출물 경로
+# ---------------------------------------------------------------------------
+# 티커 x 국면(phase)별 로그수익률 분포 통계표. src/returns.py의
+# phase_statistics()가 만들고 notebooks/day02_returns.ipynb가 여기 저장한다.
+PHASE_STATS_CSV_PATH = REPORTS / "day02_phase_stats.csv"  # -> Path
+
+# 20일 rolling 변동성 그림. 변동성 군집(volatility clustering)이 눈에 보이는지
+# 확인하는 용도이고, 리포트에서 이 파일을 참조한다.
+VOLATILITY_FIGURE_PATH = FIGURES / "day02_rolling_volatility.png"  # -> Path
+
+# rolling 변동성 계산 창 길이 (거래일). 약 1개월.
+ROLLING_VOL_WINDOW = 20  # -> int
+
+# ---------------------------------------------------------------------------
+# 11. 재현성
 # ---------------------------------------------------------------------------
 RANDOM_SEED = 42  # -> int, 순열검정·부트스트랩 등 무작위성이 들어가는 분석에 넘긴다
