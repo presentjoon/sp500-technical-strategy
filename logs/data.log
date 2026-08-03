@@ -30,3 +30,12 @@
 2026-08-02 16:48:10,575 [INFO] 저장 완료: C:\Users\chris\projects\sp500-technical-strategy\data\raw\ohlcv_raw.parquet (18424행)
 2026-08-02 16:48:10,638 [INFO] 감사 리포트 저장: C:\Users\chris\projects\sp500-technical-strategy\reports\day01_audit.txt
 2026-08-02 16:48:10,651 [INFO] 분석 구간 절단: 2000-01-01 이전 4행 제외, 39행 남음
+2026-08-03 12:05:29,820 [INFO] 로드 완료: C:\Users\chris\projects\sp500-technical-strategy\data\raw\ohlcv_raw.parquet (18424행)
+2026-08-03 12:32:58,752 [INFO] 로드 완료: C:\Users\chris\projects\sp500-technical-strategy\data\raw\ohlcv_raw.parquet (18424행)
+2026-08-03 14:58:41,411 [INFO] 로드 완료: C:\Users\chris\projects\sp500-technical-strategy\data\raw\ohlcv_raw.parquet (18424행)
+2026-08-03 15:03:04,740 [INFO] 로드 완료: C:\Users\chris\projects\sp500-technical-strategy\data\raw\ohlcv_raw.parquet (18424행)
+2026-08-03 15:03:33,940 [INFO] 로드 완료: C:\Users\chris\projects\sp500-technical-strategy\data\raw\ohlcv_raw.parquet (18424행)
+2026-08-03 15:06:41,923 [INFO] 로드 완료: C:\Users\chris\projects\sp500-technical-strategy\data\raw\ohlcv_raw.parquet (18424행)
+2026-08-03 15:13:51,700 [INFO] 로드 완료: C:\Users\chris\projects\sp500-technical-strategy\data\raw\ohlcv_raw.parquet (18424행)
+2026-08-03 15:14:42,385 [INFO] 로드 완료: C:\Users\chris\projects\sp500-technical-strategy\data\raw\ohlcv_raw.parquet (18424행)
+2026-08-03 15:16:01,002 [INFO] 로드 완료: C:\Users\chris\projects\sp500-technical-strategy\data\raw\ohlcv_raw.parquet (18424행)
