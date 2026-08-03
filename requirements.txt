@@ -1,0 +1,37 @@
+# 이 프로젝트는 3주짜리 단기 연구 프로젝트라 lock 파일(예: poetry.lock,
+# requirements.txt --freeze)까지는 두지 않는다. 대신 하한선(>=)만 지정해서
+# "이 버전보다 낮으면 우리가 쓰는 기능이 없을 수 있다"만 표시한다.
+# 상한을 고정하지 않는 이유: 상한을 박아두면 3주 뒤 다시 설치할 때 이미
+# 지나간 버전을 억지로 깔게 되어 오히려 재현성에 방해가 된다.
+
+pandas>=2.0.0
+# 이 프로젝트의 핵심 데이터 구조. long format DataFrame으로 OHLCV를 다루고,
+# groupby("ticker")·rolling·pct_change 등 시계열 연산 전부를 여기 의존한다.
+
+numpy>=1.24.0
+# pandas의 기반 라이브러리. 수익률·통계 계산에서 배열 연산에 직접 쓴다.
+# pandas가 자동으로 끌고 오지만, 버전을 명시해서 "우리가 이 버전 이상을
+# 전제로 코드를 짰다"는 걸 남긴다.
+
+pyarrow>=14.0.0
+# parquet 입출력 엔진. src/data.py의 save_parquet/load_parquet가 이걸 통해
+# 동작한다. CSV 대신 parquet을 쓰는 이유(dtype 보존)가 이 패키지 없이는
+# 성립하지 않는다.
+
+yfinance>=0.2.36
+# 가격 데이터 수집 소스. src/data.py의 download_ohlcv가 사용.
+
+ta>=0.11.0
+# 기술적 지표(RSI, MACD, 볼린저밴드, ATR) 계산. 연구 질문 자체가 "이 지표들의
+# 신호가 유효한가"이므로, 지표 계산 로직을 직접 재구현하는 대신 검증된
+# 라이브러리를 쓴다 — 지표 공식이 틀렸을 가능성을 배제하기 위함이다.
+
+matplotlib>=3.7.0
+# 시각화. figures/ 아래 저장되는 모든 차트가 이걸로 만들어진다.
+
+scipy>=1.10.0
+# 순열검정(permutation test) 등 통계 검정. CLAUDE.md 규칙 2(무작위 벤치마크
+# 없는 신호 평가 금지)를 실제로 구현할 때 필요하다.
+
+jupyter>=1.0.0
+# notebooks/ 에서 탐색·실행할 때 필요한 노트북 서버·커널.
