@@ -42,6 +42,7 @@ SMA는 "창을 채워야 값이 나온다"는 경계가 수학적으로 존재�
 
 import numpy as np
 import pandas as pd
+import ta
 
 from src import config
 
@@ -454,7 +455,437 @@ def macd(
 
 
 # ---------------------------------------------------------------------------
-# 6. 구현 대조 — "값이 다르다"에서 "왜 다른지"로 넘어가기 위한 도구
+# 6. True Range / ATR
+# ---------------------------------------------------------------------------
+def true_range(df, high_column="high", low_column="low", price_column="close"):
+    """True Range — 하루의 실제 변동폭.
+
+    왜 고가-저가로는 부족한가
+    -------------------------
+    전날 종가 100에서 오늘 갭 상승해 105에 시작하고 105~107 사이에서만 움직였다면,
+    고가-저가는 2에 불과하다. 하지만 투자자가 실제로 겪은 가격 이동은 100 -> 107,
+    즉 7이다. 갭(gap)은 장 시작 전에 벌어지므로 당일 고저 범위에 잡히지 않는다.
+    True Range는 전날 종가를 기준점에 포함시켜 이 누락을 메운다.
+
+        TR = max( 고가-저가,  |고가-전일종가|,  |저가-전일종가| )
+
+    세 항을 각각 별도 컬럼으로 남기는 이유
+    --------------------------------------
+    어느 항이 선택됐는지 보이지 않으면 TR이 커졌을 때 "변동성이 커진 것"인지
+    "갭이 발생한 것"인지 구분할 수 없다. tr_source 컬럼으로 매일 어느 항이
+    이겼는지 남긴다. 자체 검증에서도 이 컬럼으로 갭 처리를 확인한다.
+
+    첫 행 처리 — ta와 갈리는 지점
+    -----------------------------
+    첫 행은 전일 종가가 없으므로 tr_hc, tr_lc가 NaN이다. 이 프로젝트는 TR도
+    NaN으로 둔다 (전날을 모르는 날의 True Range는 존재하지 않는다).
+    ta는 `DataFrame.max(axis=1)`을 쓰는데 이 연산이 NaN을 건너뛰므로 첫 행 TR이
+    조용히 고가-저가가 된다. 보간하지 않는다는 원칙(CLAUDE.md 규칙 3)에
+    어긋나므로 따라가지 않고, 대신 노트북에서 차이를 기록한다.
+
+    Returns
+    -------
+    DataFrame
+        원본 + tr_hl, tr_hc, tr_lc, true_range, tr_source 컬럼.
+    """
+    def compute(subset):
+        high_series = subset[high_column]    # -> Series[float] (티커 행 수,)
+        low_series = subset[low_column]      # -> Series[float] (티커 행 수,)
+        close_series = subset[price_column]  # -> Series[float] (티커 행 수,)
+
+        # 전일 종가. shift(1)은 과거를 보는 연산이라 미래 참조가 아니다.
+        # (지표 단계에 진입 지연용 shift를 넣지 않는다는 원칙과는 별개다 —
+        #  이건 "어제 값"이 TR 정의 자체에 들어 있는 경우다.)
+        previous_close = close_series.shift(1)  # -> Series[float] (티커 행 수,), 첫 행 NaN
+
+        term_high_low = high_series - low_series             # -> Series[float] (티커 행 수,)
+        term_high_close = (high_series - previous_close).abs()  # -> Series[float], 상방 갭을 잡는 항
+        term_low_close = (low_series - previous_close).abs()    # -> Series[float], 하방 갭을 잡는 항
+
+        terms = pd.DataFrame(
+            {
+                "tr_hl": term_high_low,
+                "tr_hc": term_high_close,
+                "tr_lc": term_low_close,
+            }
+        )  # -> DataFrame (티커 행 수, 3)
+
+        # skipna=False로 명시한다. 기본값(True)이면 첫 행에서 NaN 두 개를 건너뛰고
+        # tr_hl만으로 최댓값을 만들어, 전날을 모르는 날에도 값이 생긴다.
+        max_term = terms.max(axis=1, skipna=False)  # -> Series[float] (티커 행 수,), 첫 행 NaN
+
+        # 어느 항이 선택됐는지. NaN 행에서는 idxmax가 오류를 내므로 유효 행만 계산한다.
+        source = pd.Series(index=subset.index, dtype=object)  # -> Series[object] (티커 행 수,)
+        valid_mask = max_term.notna()                          # -> Series[bool] (티커 행 수,)
+        valid_terms = terms.loc[valid_mask]                    # -> DataFrame (유효 행 수, 3)
+        source.loc[valid_mask] = valid_terms.idxmax(axis=1)    # -> Series[object]
+
+        result = terms.copy()             # -> DataFrame (티커 행 수, 3)
+        result["true_range"] = max_term   # -> DataFrame (티커 행 수, 4)
+        result["tr_source"] = source      # -> DataFrame (티커 행 수, 5)
+
+        return result
+
+    return _apply_per_ticker(df, compute)
+
+
+def atr(df, period=config.ATR_PERIOD, **true_range_kwargs):
+    """ATR (Average True Range) — True Range의 Wilder 평활.
+
+    D3에서 만든 wilder_rma() 프리미티브를 그대로 재사용한다. 평활 로직을 여기서
+    다시 짜면 RSI와 ATR이 서로 다른 Wilder 평활을 쓰게 되어, 나중에 한쪽만
+    고쳤을 때 원인을 추적할 수 없다.
+
+    df에 true_range 컬럼이 없으면 먼저 계산한다.
+
+    ta와 갈리는 지점 세 가지 (노트북에서 수치로 확인한다)
+    ---------------------------------------------------
+    1. 첫 행 TR: 우리는 NaN, ta는 고가-저가 (위 true_range() 설명 참고)
+    2. 시드 위치: 우리는 유효 TR 첫 period개의 평균을 index=period에 놓는다
+       (Wilder 원전). ta는 index=period-1에 놓는다.
+    3. 워밍업 값: 우리는 NaN, **ta는 0.0**이다. ta가 `np.zeros`로 배열을
+       초기화하고 앞부분을 채우지 않기 때문인데, "ATR을 아직 계산할 수 없다"와
+       "ATR이 0이다"는 전혀 다른 진술이다. 후자는 변동성이 없었다는 뜻이 된다.
+
+    Returns
+    -------
+    DataFrame
+        원본 + (필요시 true_range 관련 컬럼) + atr_{period} 컬럼.
+    """
+    column_name = f"atr_{period}"  # -> str
+
+    if "true_range" in df.columns:
+        work = df.copy()  # -> DataFrame (행 수, 컬럼 수), 이미 계산돼 있으면 재사용
+    else:
+        work = true_range(df, **true_range_kwargs)  # -> DataFrame (행 수, 컬럼 수 + 5)
+
+    def compute(subset):
+        tr_series = subset["true_range"]  # -> Series[float] (티커 행 수,)
+
+        # wilder_rma는 앞쪽 NaN을 건너뛰고 첫 유효값부터 시드를 만든다.
+        # seed="sma"이므로 유효 TR 첫 period개의 평균에서 출발한다 (Wilder 원전).
+        smoothed = wilder_rma(tr_series, period, seed="sma")  # -> Series[float] (티커 행 수,)
+
+        return pd.DataFrame({column_name: smoothed})  # -> DataFrame (티커 행 수, 1)
+
+    return _apply_per_ticker(work, compute)
+
+
+def ta_atr_masked(high, low, close, period=config.ATR_PERIOD):
+    """ta의 ATR을 부르되 워밍업 구간을 NaN으로 강제 마스킹한다.
+
+    **ta ATR을 직접 부르지 말고 반드시 이 래퍼를 쓸 것.**
+
+    왜 래퍼가 필요한가
+    ------------------
+    ta의 AverageTrueRange._run()은 결과 배열을 `np.zeros(len(close))`로 만들고
+    앞부분을 채우지 않는다. 그래서 `fillna=False`를 넘겨도 워밍업 구간이
+    NaN이 아니라 **0.0**으로 남는다.
+
+    0.0은 "계산 불가"가 아니라 "변동성 0"이라는 진술이다. 이 값이 그대로
+    저변동성 필터에 들어가면 워밍업 구간이 전부 "가장 조용한 날"로 뽑혀서,
+    표본 맨 앞 구간만 골라내는 신호가 만들어진다. 게다가 그 구간은 지표가
+    아직 안정되지도 않은 곳이다.
+
+    무엇을 지우는가
+    ---------------
+    앞 period개 행을 지운다. 내역은 두 가지다.
+
+    1. index 0 ~ period-2 : ta가 채우지 않아 0.0으로 남은 자리 (period-1개)
+    2. index period-1     : ta의 시드값. 이 값은 TR[0]을 포함해 계산되는데,
+                            ta의 TR[0]은 전일 종가가 없는데도 `max(axis=1)`이
+                            NaN을 건너뛰어 고가-저가로 채워진 값이다. 즉
+                            존재하지 않는 전일을 가정한 수치라 신뢰할 수 없다.
+
+    결과적으로 첫 유효값이 index=period가 되어 우리 구현(Wilder 원전 시드)과
+    시작 위치가 맞춰진다. 대조할 때 한쪽만 값이 있는 구간이 사라진다.
+
+    Returns
+    -------
+    Series[float]
+        워밍업이 NaN으로 마스킹된 ta ATR.
+    """
+    indicator = ta.volatility.AverageTrueRange(
+        high=high,
+        low=low,
+        close=close,
+        window=period,
+        fillna=False,  # 기본값에 의존하지 않고 명시 (그래도 0.0이 남는다)
+    )  # -> AverageTrueRange
+
+    values = indicator.average_true_range()  # -> Series[float] (행 수,)
+    masked = values.copy()                    # -> Series[float] (행 수,), 원본 보호
+
+    # ta는 np.zeros 초기화 — 0.0은 계산 불가이지 변동성 0이 아님
+    masked.iloc[:period] = np.nan
+
+    return masked
+
+
+# ---------------------------------------------------------------------------
+# 7. 볼린저밴드
+# ---------------------------------------------------------------------------
+def bollinger(
+    df,
+    period=config.BB_PERIOD,
+    num_std=config.BB_NUM_STD,
+    ddof=config.BB_STD_DDOF,
+    price_column="close",
+):
+    """볼린저밴드 — 이동평균 ± (표준편차 x 배수).
+
+        중심선 = SMA(종가, period)
+        상단   = 중심선 + num_std * 표준편차
+        하단   = 중심선 - num_std * 표준편차
+        %B     = (종가 - 하단) / (상단 - 하단)
+        밴드폭 = (상단 - 하단) / 중심선 * 100
+
+    %B와 밴드폭이 따로 필요한 이유
+    ------------------------------
+    상단/하단은 가격 단위라 시기와 종목을 넘어 비교할 수 없다. %B는 "밴드 안에서
+    지금 어디쯤인가"를 0~1로 정규화하고(밴드 밖이면 0 미만/1 초과), 밴드폭은
+    "밴드가 얼마나 벌어져 있나"를 중심선 대비 %로 정규화한다. 국면 간 비교에는
+    이 두 정규화 지표를 써야 한다.
+
+    ddof를 인자로 노출하는 이유 — 기본값에 의존하면 안 되는 자리
+    -----------------------------------------------------------
+    pandas의 Series.std()는 기본 ddof=1(n-1로 나눔), numpy의 np.std()는 기본
+    ddof=0(n으로 나눔)이다. 같은 "20일 표준편차"인데 값이 다르고, n=20에서
+    비율이 sqrt(20/19) ≈ 1.026이라 밴드폭이 약 2.6% 달라진다. 어느 쪽을 썼는지
+    적지 않은 볼린저밴드 명세는 재현 불가능하다 (D3에서 RSI 평활에 대해 확인한
+    것과 같은 종류의 문제다). config.BB_STD_DDOF에 고정하고 항상 명시적으로
+    넘긴다.
+
+    Returns
+    -------
+    DataFrame
+        원본 + bb_middle, bb_upper, bb_lower, bb_percent_b, bb_width 컬럼.
+    """
+    def compute(subset):
+        close_series = subset[price_column]  # -> Series[float] (티커 행 수,)
+
+        # 중심선은 D3의 sma() 프리미티브를 재사용한다.
+        middle = sma(close_series, period)  # -> Series[float] (티커 행 수,), 앞 period-1개 NaN
+
+        # rolling(period)은 이 행을 포함한 직전 period개를 본다. 미래를 보지 않는다.
+        # min_periods를 창 길이와 같게 두어 워밍업 구간에 값이 생기지 않게 한다.
+        rolling_window = close_series.rolling(window=period, min_periods=period)  # -> Rolling
+        deviation = rolling_window.std(ddof=ddof)  # -> Series[float] (티커 행 수,), ddof 명시
+
+        band_offset = num_std * deviation  # -> Series[float] (티커 행 수,)
+        upper = middle + band_offset       # -> Series[float] (티커 행 수,)
+        lower = middle - band_offset       # -> Series[float] (티커 행 수,)
+
+        band_span = upper - lower  # -> Series[float] (티커 행 수,), 0이면 20일 내내 같은 가격
+
+        # %B: 0/0 방어. 표준편차가 0이면 상단=중심=하단이라 "밴드 안 위치"가
+        # 정의되지 않는다. 가격이 곧 중심선이므로 규약값(0.5)을 쓴다.
+        percent_b = (close_series - lower) / band_span  # -> Series[float] (티커 행 수,), 0 나눗셈은 inf
+        flat_mask = band_span == 0                      # -> Series[bool] (티커 행 수,)
+        percent_b = percent_b.where(~flat_mask, config.BB_PERCENT_B_WHEN_FLAT)  # -> Series[float]
+        percent_b = percent_b.where(band_span.notna())  # -> Series[float], 워밍업 NaN 복원
+
+        # 밴드폭: 중심선 대비 %. 중심선이 0이면 정의되지 않으므로 NaN으로 둔다
+        # (지수 가격에서는 발생하지 않지만 개별 종목 확장 대비).
+        width = band_span / middle * 100        # -> Series[float] (티커 행 수,)
+        zero_middle = middle == 0               # -> Series[bool] (티커 행 수,)
+        width = width.where(~zero_middle)       # -> Series[float] (티커 행 수,)
+
+        return pd.DataFrame(
+            {
+                "bb_middle": middle,
+                "bb_upper": upper,
+                "bb_lower": lower,
+                "bb_percent_b": percent_b,
+                "bb_width": width,
+            }
+        )  # -> DataFrame (티커 행 수, 5)
+
+    return _apply_per_ticker(df, compute)
+
+
+# ---------------------------------------------------------------------------
+# 8. 국면별 분포 — 지표가 국면에 어떻게 반응하는지 재는 도구
+# ---------------------------------------------------------------------------
+# 주의: 아래 함수들이 쓰는 phase 컬럼은 사후(post-hoc) 라벨이다. 지표 계산에
+# 국면 정보가 들어가면 미래 참조가 된다 (CLAUDE.md 규칙 4). 여기서는 이미
+# 계산이 끝난 지표를 국면별로 "나눠 보기만" 한다 — 계산에 쓰지 않는다.
+# ---------------------------------------------------------------------------
+def phase_distribution(df, column, phases=None, quantiles=None, ticker=None):
+    """지표 한 컬럼의 국면별 분포 통계를 낸다.
+
+    Parameters
+    ----------
+    df : DataFrame
+        phase 컬럼이 붙어 있어야 한다 (returns.tag_phase 결과).
+    column : str
+        분포를 볼 지표 컬럼 이름.
+    ticker : str | None
+        None이면 전체, 아니면 해당 티커만.
+
+    Returns
+    -------
+    DataFrame
+        국면별 (n, mean, std, cv, 분위수들, min, max).
+        phase는 config에 정의된 연대순.
+    """
+    if phases is None:
+        phases = config.MARKET_REGIMES  # -> dict[str, dict] (6,)
+
+    if quantiles is None:
+        quantiles = config.DISTRIBUTION_QUANTILES  # -> list[float] (5,)
+
+    work = df.copy()  # -> DataFrame (행 수, 컬럼 수)
+
+    if ticker is not None:
+        ticker_mask = work["ticker"] == ticker  # -> Series[bool] (행 수,)
+        work = work.loc[ticker_mask]            # -> DataFrame (티커 행 수, 컬럼 수)
+
+    phase_keys = list(phases.keys())  # -> list[str] (6,)
+
+    stat_rows = []  # -> list[dict]
+
+    for phase_key in phase_keys:
+        phase_mask = work["phase"] == phase_key  # -> Series[bool] (행 수,)
+        subset = work.loc[phase_mask]            # -> DataFrame (국면 행 수, 컬럼 수)
+
+        values = subset[column]   # -> Series[float] (국면 행 수,)
+        values = values.dropna()  # -> Series[float] (유효 행 수,), 워밍업 제외
+
+        if len(values) == 0:
+            continue
+
+        mean_value = float(values.mean())  # -> float
+        std_value = float(values.std())    # -> float
+
+        # 변이계수(CV) = 표준편차 / 평균. 단위가 다른 지표끼리 "흩어진 정도"를
+        # 비교하려면 평균으로 나눠 무차원으로 만들어야 한다. 평균이 0에 가까우면
+        # 폭발하므로 그때는 NaN으로 둔다.
+        if mean_value != 0:
+            coefficient_of_variation = std_value / abs(mean_value)  # -> float
+        else:
+            coefficient_of_variation = float("nan")  # -> float
+
+        row = {
+            "phase": phase_key,
+            "phase_name": phases[phase_key]["name"],
+            "n": len(values),
+            "mean": mean_value,
+            "std": std_value,
+            "cv": coefficient_of_variation,
+        }  # -> dict
+
+        for quantile in quantiles:
+            label = f"q{int(quantile * 100):02d}"  # -> str
+            row[label] = float(values.quantile(quantile))
+
+        row["min"] = float(values.min())  # -> float
+        row["max"] = float(values.max())  # -> float
+
+        stat_rows.append(row)
+
+    stats = pd.DataFrame(stat_rows)  # -> DataFrame (국면 수, 컬럼 수)
+
+    ordered_phase = pd.Categorical(stats["phase"], categories=phase_keys, ordered=True)
+    stats["phase"] = ordered_phase
+    stats = stats.sort_values("phase")       # -> DataFrame, 연대순
+    stats = stats.reset_index(drop=True)     # -> DataFrame
+
+    return stats
+
+
+def phase_spread(stats, column_label):
+    """국면별 통계표에서 "국면 간 얼마나 벌어지는가"를 요약한다.
+
+    지표가 국면에 얼마나 민감한지를 한 숫자로 만드는 것이 목적이다.
+    배율(max/min)을 쓰는 이유: D2에서 연율변동성을 "3.3배 차이"로 표현했으므로
+    같은 척도로 놓아야 나란히 비교할 수 있다.
+
+    Returns
+    -------
+    dict
+    """
+    mean_column = stats["mean"]  # -> Series[float] (국면 수,)
+
+    max_mean = float(mean_column.max())  # -> float
+    min_mean = float(mean_column.min())  # -> float
+
+    if min_mean != 0:
+        ratio = max_mean / min_mean  # -> float
+    else:
+        ratio = float("nan")  # -> float
+
+    max_index = mean_column.idxmax()  # -> int
+    min_index = mean_column.idxmin()  # -> int
+
+    return {
+        "지표": column_label,
+        "최소 국면": stats.loc[min_index, "phase_name"],
+        "최소 평균": min_mean,
+        "최대 국면": stats.loc[max_index, "phase_name"],
+        "최대 평균": max_mean,
+        "국면 간 배율": ratio,
+    }
+
+
+def threshold_rate_by_phase(df, column, threshold, direction, phases=None, ticker=None):
+    """임계선 발동 비율을 국면별로 낸다 (H2 검증용).
+
+    Returns
+    -------
+    DataFrame
+        국면별 (n, 발동일수, 발동률%).
+    """
+    if phases is None:
+        phases = config.MARKET_REGIMES  # -> dict[str, dict] (6,)
+
+    work = df.copy()  # -> DataFrame (행 수, 컬럼 수)
+
+    if ticker is not None:
+        ticker_mask = work["ticker"] == ticker  # -> Series[bool] (행 수,)
+        work = work.loc[ticker_mask]            # -> DataFrame (티커 행 수, 컬럼 수)
+
+    signal = threshold_signal(work[column], threshold, direction)  # -> Series[float] (행 수,)
+    work = work.assign(_signal=signal)                             # -> DataFrame (행 수, 컬럼 수 + 1)
+
+    phase_keys = list(phases.keys())  # -> list[str] (6,)
+
+    rate_rows = []  # -> list[dict]
+
+    for phase_key in phase_keys:
+        phase_mask = work["phase"] == phase_key  # -> Series[bool] (행 수,)
+        subset = work.loc[phase_mask]            # -> DataFrame (국면 행 수, 컬럼 수 + 1)
+
+        judged = subset["_signal"].dropna()  # -> Series[float] (판단 가능 행 수,), 워밍업 제외
+
+        if len(judged) == 0:
+            continue
+
+        fired = int((judged == 1).sum())      # -> int
+        rate = 100 * fired / len(judged)      # -> float
+
+        rate_rows.append(
+            {
+                "phase": phase_key,
+                "phase_name": phases[phase_key]["name"],
+                "판단 가능일": len(judged),
+                "발동일": fired,
+                "발동률%": rate,
+            }
+        )
+
+    rates = pd.DataFrame(rate_rows)  # -> DataFrame (국면 수, 5)
+
+    ordered_phase = pd.Categorical(rates["phase"], categories=phase_keys, ordered=True)
+    rates["phase"] = ordered_phase
+    rates = rates.sort_values("phase")     # -> DataFrame
+    rates = rates.reset_index(drop=True)   # -> DataFrame
+
+    return rates
+
+
+# ---------------------------------------------------------------------------
+# 9. 구현 대조 — "값이 다르다"에서 "왜 다른지"로 넘어가기 위한 도구
 # ---------------------------------------------------------------------------
 def compare_columns(df, column_a, column_b, label, top_n=config.TOP_DIFF_ROWS):
     """두 컬럼의 차이를 티커별로 요약한다.
@@ -673,6 +1104,22 @@ def precision_check(series_a, series_b):
     n_nonzero = int((difference != 0).sum())      # -> int
     arrays_equal = bool(np.array_equal(values_a, values_b))  # -> bool
 
+    # 상대차도 함께 낸다. RSI처럼 값의 범위가 고정된(bounded) 지표는 절대차만
+    # 봐도 되지만, ATR·MACD처럼 가격 단위를 쓰는 지표는 값 자체가 26년간
+    # 커지므로 절대차도 같이 커진다. 그 증가가 "오차가 커진 것"인지 "값이 커져서
+    # 1 ULP가 커진 것"인지는 상대차를 봐야 갈린다. 상대차가 머신 엡실론
+    # (약 2.2e-16) 수준에 머물면 후자다.
+    scale = np.maximum(np.abs(values_a), np.abs(values_b))  # -> ndarray[float]
+    nonzero_scale = scale > 0                                # -> ndarray[bool]
+
+    if nonzero_scale.any():
+        relative = absolute[nonzero_scale] / scale[nonzero_scale]  # -> ndarray[float]
+        max_relative = float(relative.max())                        # -> float
+        last_relative = float(relative[-1])                         # -> float
+    else:
+        max_relative = 0.0   # -> float
+        last_relative = 0.0  # -> float
+
     # NaN이 같은 자리에 있는지도 봐야 한다. 값이 같아도 유효 구간이 다르면
     # 두 구현이 같다고 말할 수 없다.
     nan_a = series_a.isna().to_numpy()  # -> ndarray[bool] (행 수,)
@@ -683,12 +1130,18 @@ def precision_check(series_a, series_b):
         verdict = "비트 단위 일치 (정확히 0)"       # -> str
     elif max_absolute < 1e-12:
         verdict = "부동소수점 오차 수준의 일치"     # -> str
+    elif max_relative < 1e-12:
+        # 절대차는 크지만 상대차가 엡실론 수준이면, 값 자체가 큰 구간에서
+        # 마지막 비트가 흔들린 것이다. 값이 커지는 지표에서 나타난다.
+        verdict = "상대오차 기준 일치 (값의 크기 때문에 절대차만 큼)"  # -> str
     else:
         verdict = "실질적 차이 — 원인 규명 필요"    # -> str
 
     return {
         "n_compared": n_compared,
         "max_abs_diff": max_absolute,
+        "max_rel_diff": max_relative,
+        "last_rel_diff": last_relative,
         "n_nonzero": n_nonzero,
         "array_equal": arrays_equal,
         "nan_positions_equal": nan_equal,
