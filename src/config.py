@@ -315,7 +315,38 @@ PANEL_WINDOWS = {
 DISTRIBUTION_QUANTILES = [0.05, 0.25, 0.50, 0.75, 0.95]  # -> list[float] (5,)
 
 # ---------------------------------------------------------------------------
-# 14. 그림 저장 설정
+# 14. 이벤트 스터디 / 순열검정 설정 (Day 6, docs/signal_spec.md §6)
+# ---------------------------------------------------------------------------
+# 사후 수익률 지평 (거래일). 명세 §6.1에서 이 4개로 고정했다.
+# 지평 하나가 늘어날 때마다 확증 검정 횟수 m이 신호 수만큼 늘어나므로
+# 결과를 보고 추가하지 않는다.
+EVENT_HORIZONS = [1, 5, 10, 20]  # -> list[int] (4,)
+
+# 신호 x 국면 x 지평 조합의 유효 사건 수가 이 값 미만이면 통계적 주장을 하지
+# 않는다 (명세 §6.3). 데이터를 보기 전에 정한 값이다.
+MIN_EVENTS = 30  # -> int
+
+# 확증 검정 횟수. 신호 5개 x 지평 4개 (명세 §6.4).
+# S5를 잘라내면 16으로 재계산한다.
+CONFIRMATORY_TESTS = 20  # -> int
+
+# 개별 검정 유의수준과 Bonferroni 보정값.
+ALPHA = 0.05                                  # -> float
+ALPHA_ADJUSTED = ALPHA / CONFIRMATORY_TESTS   # -> float (0.0025)
+
+# 순열검정 설정 (명세 §6.5). 결과 열람 전 확정했으며 변경하지 않는다.
+PERMUTATION_ITERATIONS = 10_000  # -> int
+PERMUTATION_SEED = 42            # -> int, RANDOM_SEED와 같은 값이지만 용도를 분리해 둔다
+
+# Day 6 산출물 경로
+SIGNALS_PARQUET_PATH = DATA_PROCESSED / "signals.parquet"          # -> Path
+EVENT_STUDY_CSV_PATH = REPORTS / "day06_event_study.csv"           # -> Path
+PERMUTATION_CSV_PATH = REPORTS / "day06_permutation.csv"           # -> Path
+SIGNAL_COUNTS_CSV_PATH = REPORTS / "day06_signal_counts.csv"       # -> Path
+OVERLAP_CSV_PATH = REPORTS / "day06_overlap_diagnostic.csv"        # -> Path
+
+# ---------------------------------------------------------------------------
+# 15. 그림 저장 설정
 # ---------------------------------------------------------------------------
 # 그림 해상도. 노트북 출력은 커밋하므로(GitHub에서 결과가 바로 보여야 함)
 # dpi가 그대로 저장소 용량이 된다. 150이면 화면에서 필요 이상으로 크고
@@ -341,6 +372,6 @@ FIGURE_DPI_PANEL = 100  # -> int
 FIGURE_BBOX = "tight"  # -> str
 
 # ---------------------------------------------------------------------------
-# 15. 재현성
+# 16. 재현성
 # ---------------------------------------------------------------------------
 RANDOM_SEED = 42  # -> int, 순열검정·부트스트랩 등 무작위성이 들어가는 분석에 넘긴다
