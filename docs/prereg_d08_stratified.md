@@ -3,8 +3,8 @@
 작성 시각: 2026-08-08 [13:00]
 작성 상태: **결과 미확인.** 이 문서 커밋 이후에만 코드를 실행한다.
 
-관련 문서: `docs/day07_robustness.md`, `reports/week2.md`
-후속 기록: `docs/day08_stratified.md` (결과 전용, 본 문서와 분리)
+관련 문서: `reports/day07_robustness.md`, `reports/week2.md`
+후속 기록: `reports/day08_stratified.md` (결과 전용, 본 문서와 분리)
 
 ---
 
@@ -203,6 +203,6 @@ $$
 |---|---|
 | `src/` (함수) | 층화 계산 로직. 노트북에 로직을 두지 않는다 |
 | `reports/day08_stratified.csv` | 분위별 결과표 |
-| `docs/day08_stratified.md` | 검산 결과, 결과표, 판정, 예측 대비 평가 |
+| `reports/day08_stratified.md` | 검산 결과, 결과표, 판정, 예측 대비 평가 |
 
 본 사전등록 문서는 결과 산출 이후 수정하지 않는다.
