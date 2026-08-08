@@ -131,26 +131,28 @@
 | `day06_diag_s1_timeline.png` | D6 | **"S1 신호가 특정 시기에만 몰려 있지는 않다."** H1(위기 탐지기)을 S1에 대해 부분 기각 | `day06_diagnostics.md` |
 | `day07_p_mean_vs_stud.png` | D7 | **"`sd_ratio` > 1이면 p가 오르고 < 1이면 내린다 — 20/20 예외 없이."** 방향 규칙이 경험적 우연이 아님을 보이는 핵심 그림 | `day07_robustness.md`, `week2.md`, `logs/2026-08-08.md` |
 | `day07_signal_overview.png` | D7 | **"5개 신호 어느 것도 조정 유의수준을 넘지 못한다."** 결론을 한 장으로 요약 | `week2.md`, `logs/2026-08-08.md` |
+| `day08b_signal_concentration.png` | D8b | **"5분위 층화는 통제로 기능하지 못했다 — 신호의 80%가 상위 2분위에 있다."** 무작위 기대선 2개(사전등록 가정 13.0건 / 실제 점유율 반영 15.78건)를 함께 그려, 어느 분모를 써도 편중이 남음을 보인다 | `day08b_pathvol.md` §4-3, `week2.md` §6-1 |
 | `event_study_S1_rsi_oversold.png` | D6 | **"S1의 사후 수익률 분포는 무작위 대비 넓고 왼쪽으로 치우쳐 있다."** `sd_ratio` 2.14의 시각적 대응물 | D6 노트북, `week2.md` §3-2 (글롭) |
 | `event_study_S2_rsi_overbought.png` | D6 | **"S2는 분포가 오히려 좁다"** (`sd_ratio` 0.51) — 반보수 방향의 대조군 | D6 노트북, `week2.md` §3-2 (글롭) |
 | `event_study_S3_bb_lower_break.png` | D6 | **"S3는 S1과 같은 방향이지만 폭이 작다"** (`sd_ratio` 1.53) | D6 노트북, `week2.md` §3-2 (글롭) |
 | `event_study_S4_bb_upper_break.png` | D6 | **"S4는 분포가 좁아 스튜던트화 시 p가 내려간다"** (`sd_ratio` 0.53) | D6 노트북, `week2.md` §3-2 (글롭) |
 | `event_study_S5_macd_cross.png` | D6 | **"S5는 무작위와 거의 구분되지 않는다"** (`sd_ratio` 0.80, 초과 −0.001%p) | D6 노트북, `week2.md` §3-2 (글롭) |
-| `permutation_S1_rsi_oversold_h20.png` | D6 | **"관측값이 귀무분포의 어디에 놓이는가"** — S1 h=20 | D6 노트북 — **본문 미인용** |
-| `permutation_S2_rsi_overbought_h20.png` | D6 | 같음 — S2 h=20 | D6 노트북 — **본문 미인용** |
-| `permutation_S3_bb_lower_break_h20.png` | D6 | 같음 — S3 h=20 | D6 노트북 — **본문 미인용** |
-| `permutation_S4_bb_upper_break_h20.png` | D6 | 같음 — S4 h=20 | D6 노트북 — **본문 미인용** |
-| `permutation_S5_macd_cross_h20.png` | D6 | 같음 — S5 h=20 | D6 노트북 — **본문 미인용** |
+| `permutation_S1_rsi_oversold_h20.png` | D6 | **"관측값이 귀무분포의 어디에 놓이는가"** — S1 h=20 | D6 노트북 — **부록 후보** |
+| `permutation_S2_rsi_overbought_h20.png` | D6 | 같음 — S2 h=20 | D6 노트북 — **부록 후보** |
+| `permutation_S3_bb_lower_break_h20.png` | D6 | 같음 — S3 h=20 | D6 노트북 — **부록 후보** |
+| `permutation_S4_bb_upper_break_h20.png` | D6 | 같음 — S4 h=20 | D6 노트북 — **부록 후보** |
+| `permutation_S5_macd_cross_h20.png` | D6 | 같음 — S5 h=20 | D6 노트북 — **부록 후보** |
 
-### 미인용 그림 정리 (버리라는 뜻이 아니라 선별 재료)
+### 부록 후보 (버리라는 뜻이 아니라 선별 재료)
 
-**순열 귀무분포 5장 전부가 `reports/` 본문에 인용되지 않았다.** 노트북에는
-있으나 리포트 문장이 이들을 근거로 쓰지 않는다.
+**순열 귀무분포 5장은 본문에 인용하지 않고 부록 후보로 둔다** (2026-08-09 결정).
+노트북에는 있으나 리포트 문장이 이들을 근거로 쓰지 않는다.
 
-**빠져 있는 그림 (최종 리포트에서 필요할 수 있음)**
+**아직 빠져 있는 그림**
 
-- **D8b 그림이 한 장도 없다.** 분위별 `ratio`와 신호일 편중(1/2/10/20/32)을
-  보여주는 그림이 없어, `week2.md` §6-1의 편중 서술이 표로만 지탱된다.
+- **D8b는 `day08b_signal_concentration.png` 1장뿐이다.** 신호일 편중은
+  이 그림이 받쳐주지만, 분위별 `ratio`(0.90 / 1.32 / 1.08 / 1.36 / 1.55)를
+  보여주는 그림은 없다.
 - **D7 강건성 그림이 `day07_p_mean_vs_stud.png` 하나뿐이다.** 3일 제거 대비나
   VR(20) 관련 그림은 없다.
 
