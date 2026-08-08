@@ -595,6 +595,35 @@ def variance_ratio(universe, horizon=20, price_column="close"):
 
     effective_sample = observations / horizon  # -> float, 중첩 보정 후 대략적 유효 표본
 
+    # Lo-MacKinlay (1988) 이분산 강건 통계량 z*.
+    # 등분산 z는 팻테일·이분산 자료에서 해석할 수 없으므로 이쪽을 쓴다.
+    # **점추정치 VR은 그대로이고 분모(표준오차)만 바뀐다.**
+    #
+    #   delta_j = T * sum_t (r_t - mu)^2 (r_{t-j} - mu)^2 / [ sum_t (r_t - mu)^2 ]^2
+    #   theta*  = sum_{j=1}^{h-1} [2(h-j)/h]^2 * delta_j
+    #   z*      = sqrt(T) * (VR - 1) / sqrt(theta*)
+    #
+    # 등분산 iid 하에서는 delta_j -> 1 이므로 theta*가 2(2h-1)(h-1)/(3h)로
+    # 수렴한다. 즉 위 등분산 공식의 일반화다 (아래에서 값으로 확인 가능).
+    return_values = daily_return.to_numpy()          # -> ndarray[float] (T,)
+    mean_return = return_values.mean()               # -> numpy.float64
+    deviation = return_values - mean_return          # -> ndarray[float] (T,)
+    squared = deviation ** 2                         # -> ndarray[float] (T,)
+
+    squared_total = squared.sum()  # -> numpy.float64
+
+    theta = 0.0  # -> float
+
+    for lag in range(1, horizon):
+        cross = squared[lag:] * squared[:-lag]  # -> ndarray[float] (T - lag,)
+        delta = observations * cross.sum() / (squared_total ** 2)  # -> numpy.float64
+
+        weight = 2 * (horizon - lag) / horizon  # -> float
+        theta = theta + (weight ** 2) * delta
+
+    robust_se = np.sqrt(theta / observations)  # -> numpy.float64
+    robust_z = (ratio - 1) / robust_se          # -> numpy.float64
+
     return {
         "horizon": horizon,
         "var_daily": daily_variance,
@@ -603,6 +632,9 @@ def variance_ratio(universe, horizon=20, price_column="close"):
         "n_daily": observations,
         "se_iid": float(standard_error),
         "z_iid": float(z_value),
+        "theta_robust": float(theta),
+        "se_robust": float(robust_se),
+        "z_robust": float(robust_z),
         "effective_sample": effective_sample,
     }
 
