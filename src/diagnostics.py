@@ -360,6 +360,254 @@ def pre_event_curve(events, universe, signal_id, window=5, price_column="close")
 
 
 # ---------------------------------------------------------------------------
+# 스튜던트화 순열검정 (D7 강건성 검증)
+# ---------------------------------------------------------------------------
+def studentized_permutation(events, universe, signal_id, horizon, iterations, seed):
+    """스튜던트화 검정통계량으로 순열검정을 다시 돌린다.
+
+    **사전등록 통계량(평균)의 교체가 아니라 강건성 점검이다.**
+    확증 판정은 `docs/signal_spec.md` §6.5의 평균 통계량 결과를 유지한다.
+
+    왜 스튜던트화가 필요한가
+    ------------------------
+    표준 순열검정은 **날카로운 귀무가설(sharp null)** — 라벨과 수익률이 완전히
+    독립 — 을 검정한다. 그 가설 하에서는 평균뿐 아니라 분포 전체가 같아야 하므로
+    **평균이 같아도 분산이 다르면 기각된다.**
+
+    우리가 알고 싶은 것은 **약한 귀무(weak null)** — 평균만 같음 — 이다.
+    검정통계량을 자기 표본의 표준편차로 나누면 약한 귀무 하에서도 점근적으로
+    타당해진다. Janssen (1997), Chung & Romano (2013).
+
+        T = (표본평균 - 모집단평균) / (표본표준편차 / sqrt(n))
+
+    **각 순열 표본은 그 표본 자신의 표준편차로 나눈다.** 관측표본의 표준편차로
+    고정하면 분모가 상수가 되어 평균 통계량과 같은 검정이 되어버린다.
+
+    Returns
+    -------
+    dict
+    """
+    # EX-POST ONLY: 사후 평가용. signals.py로 역류 금지
+    column_name = f"fwd_ret_{horizon}"  # -> str
+
+    fired_mask = (events["signal_id"] == signal_id) & (events["signal"])  # -> Series[bool]
+    observed = events.loc[fired_mask, column_name].dropna().to_numpy()    # -> ndarray[float] (n,)
+
+    pool = universe[column_name].dropna().to_numpy()  # -> ndarray[float] (유효 거래일,)
+
+    count = len(observed)  # -> int
+
+    pool_mean = float(pool.mean())  # -> float
+
+    observed_mean = float(observed.mean())              # -> float
+    observed_sd = float(observed.std(ddof=STD_DDOF))    # -> float, ddof 명시
+
+    root_n = np.sqrt(count)  # -> numpy.float64
+
+    observed_t = (observed_mean - pool_mean) / (observed_sd / root_n)  # -> float
+    statistic = abs(observed_t)                                        # -> float
+
+    generator = np.random.default_rng(seed)  # -> Generator
+
+    extreme_count = 0  # -> int
+
+    for _iteration in range(iterations):
+        drawn = generator.choice(pool, size=count, replace=False)  # -> ndarray[float] (n,)
+
+        drawn_mean = drawn.mean()                    # -> numpy.float64
+        drawn_sd = drawn.std(ddof=STD_DDOF)          # -> numpy.float64, 표본마다 다시 계산
+
+        if drawn_sd == 0:
+            continue
+
+        drawn_t = (drawn_mean - pool_mean) / (drawn_sd / root_n)  # -> numpy.float64
+
+        if abs(drawn_t) >= statistic:
+            extreme_count = extreme_count + 1
+
+    p_value = (1 + extreme_count) / (iterations + 1)  # -> float
+
+    return {
+        "signal_id": signal_id,
+        "h": horizon,
+        "n": count,
+        "observed_t": observed_t,
+        "extreme_count": extreme_count,
+        "p_perm_stud": p_value,
+    }
+
+
+def drop_days_recalculation(events, universe, signal_id, horizon, drop_dates):
+    """특정 날짜를 제외하고 평균·표준편차·분산비를 다시 계산한다.
+
+    **이것은 보정이 아니라 대비다.** 제외한 결과를 "진짜 값"으로 쓰지 않는다.
+    평균과 분산비 중 어느 쪽이 소수 관측에 더 민감한지를 보는 것이 목적이다.
+
+    Returns
+    -------
+    dict
+    """
+    # EX-POST ONLY: 사후 평가용. signals.py로 역류 금지
+    column_name = f"fwd_ret_{horizon}"  # -> str
+
+    fired_mask = (events["signal_id"] == signal_id) & (events["signal"])  # -> Series[bool]
+    fired = events.loc[fired_mask]                                        # -> DataFrame
+    fired = fired.dropna(subset=[column_name])                            # -> DataFrame (n, 컬럼 수)
+
+    drop_timestamps = [pd.Timestamp(d) for d in drop_dates]  # -> list[Timestamp]
+
+    keep_mask = ~fired["date"].isin(drop_timestamps)  # -> Series[bool] (n,)
+    kept = fired.loc[keep_mask]                       # -> DataFrame (n - 제거 수, 컬럼 수)
+
+    pool = universe[column_name].dropna()  # -> Series[float]
+
+    full_values = fired[column_name]  # -> Series[float] (n,)
+    kept_values = kept[column_name]   # -> Series[float] (n - 제거 수,)
+
+    pool_mean = float(pool.mean())                  # -> float
+    pool_sd = float(pool.std(ddof=STD_DDOF))        # -> float
+
+    full_mean = float(full_values.mean())               # -> float
+    full_sd = float(full_values.std(ddof=STD_DDOF))     # -> float
+    kept_mean = float(kept_values.mean())               # -> float
+    kept_sd = float(kept_values.std(ddof=STD_DDOF))     # -> float
+
+    full_root = np.sqrt(len(full_values))  # -> numpy.float64
+    kept_root = np.sqrt(len(kept_values))  # -> numpy.float64
+
+    return {
+        "signal_id": signal_id,
+        "h": horizon,
+        "n_full": len(full_values),
+        "n_kept": len(kept_values),
+        "dropped": len(full_values) - len(kept_values),
+        "mean_full": full_mean,
+        "mean_kept": kept_mean,
+        "mean_pool": pool_mean,
+        "excess_full": full_mean - pool_mean,
+        "excess_kept": kept_mean - pool_mean,
+        "sd_full": full_sd,
+        "sd_kept": kept_sd,
+        "sd_pool": pool_sd,
+        "sd_ratio_full": full_sd / pool_sd,
+        "sd_ratio_kept": kept_sd / pool_sd,
+        "t_adj_full": (full_mean - pool_mean) / (full_sd / full_root),
+        "t_adj_kept": (kept_mean - pool_mean) / (kept_sd / kept_root),
+    }
+
+
+def concentration_shares(events, universe, signal_id, horizon, top_k=3):
+    """상위 k개 관측이 차지하는 비중을 두 가지 분모로 계산한다.
+
+    D6에서 "3일이 86.1%"라고 적었으나 분모를 명시하지 않았다. 분모가 무엇이냐에
+    따라 값이 달라지므로 두 가지를 모두 낸다.
+
+    - 음수 관측 합 : 65개 중 음수인 관측만의 합
+    - 초과수익 총합 : 65개 편차 (r_i - pool_mean) 의 합
+
+    Returns
+    -------
+    dict
+    """
+    # EX-POST ONLY: 사후 평가용. signals.py로 역류 금지
+    column_name = f"fwd_ret_{horizon}"  # -> str
+
+    fired_mask = (events["signal_id"] == signal_id) & (events["signal"])  # -> Series[bool]
+    fired = events.loc[fired_mask]                                        # -> DataFrame
+    fired = fired.dropna(subset=[column_name])                            # -> DataFrame (n, 컬럼 수)
+
+    values = fired[column_name]  # -> Series[float] (n,)
+
+    pool = universe[column_name].dropna()  # -> Series[float]
+    pool_mean = float(pool.mean())          # -> float
+
+    worst = values.nsmallest(top_k)  # -> Series[float] (top_k,)
+    worst_sum = float(worst.sum())    # -> float
+
+    negative_values = values.loc[values < 0]      # -> Series[float]
+    negative_sum = float(negative_values.sum())    # -> float
+
+    deviations = values - pool_mean          # -> Series[float] (n,)
+    deviation_sum = float(deviations.sum())  # -> float
+
+    worst_deviations = deviations.loc[worst.index]  # -> Series[float] (top_k,)
+    worst_deviation_sum = float(worst_deviations.sum())  # -> float
+
+    return {
+        "signal_id": signal_id,
+        "h": horizon,
+        "n": len(values),
+        "top_k": top_k,
+        "worst_dates": [str(d.date()) for d in fired.loc[worst.index, "date"]],
+        "worst_raw_sum": worst_sum,
+        "negative_count": len(negative_values),
+        "negative_sum": negative_sum,
+        "share_of_negative": worst_sum / negative_sum,
+        "worst_deviation_sum": worst_deviation_sum,
+        "deviation_sum": deviation_sum,
+        "share_of_deviation": worst_deviation_sum / deviation_sum,
+    }
+
+
+def variance_ratio(universe, horizon=20, price_column="close"):
+    """분산비 VR(h) = Var(h일 수익률) / (h x Var(1일 수익률)).
+
+    **신호와 무관한 시장 자체의 성질이므로 m=20 family와 무관하다.**
+    다중검정 문제가 없다.
+
+    VR = 1 이면 랜덤워크와 정합. VR < 1 은 평균회귀(음의 자기상관),
+    VR > 1 은 추세 지속(양의 자기상관)을 시사한다.
+
+    한계 (반드시 병기할 것)
+    -----------------------
+    반환되는 z값은 **등분산 iid 귀무 하의 근사식**을 쓴다. 실제 수익률은
+    팻테일이고 이분산이므로 이 SE는 **과소 추정**이다. 게다가 중첩 창을 쓰므로
+    유효 표본이 (전체 거래일 / h)로 줄어든다. **z값은 방향 참고용이며 유의성
+    주장에 쓰지 않는다.** 이분산 강건 버전은 D14 후보.
+
+    Returns
+    -------
+    dict
+    """
+    price_series = universe[price_column]  # -> Series[float] (6684,)
+
+    log_price = np.log(price_series)  # -> Series[float] (6684,)
+
+    daily_return = log_price.diff()   # -> Series[float] (6684,), 첫 행 NaN
+    daily_return = daily_return.dropna()  # -> Series[float] (6683,)
+
+    horizon_return = log_price.diff(horizon)  # -> Series[float] (6684,), 앞 h개 NaN
+    horizon_return = horizon_return.dropna()  # -> Series[float] (6684 - h,)
+
+    daily_variance = float(daily_return.var(ddof=STD_DDOF))      # -> float
+    horizon_variance = float(horizon_return.var(ddof=STD_DDOF))  # -> float
+
+    ratio = horizon_variance / (horizon * daily_variance)  # -> float
+
+    observations = len(daily_return)  # -> int
+
+    # 등분산 iid 귀무 하 근사 표준오차: sqrt(2(2h-1)(h-1) / (3 h T))
+    numerator = 2 * (2 * horizon - 1) * (horizon - 1)  # -> int
+    denominator = 3 * horizon * observations           # -> int
+    standard_error = np.sqrt(numerator / denominator)  # -> numpy.float64
+
+    z_value = (ratio - 1) / standard_error  # -> numpy.float64
+
+    effective_sample = observations / horizon  # -> float, 중첩 보정 후 대략적 유효 표본
+
+    return {
+        "horizon": horizon,
+        "var_daily": daily_variance,
+        "var_horizon": horizon_variance,
+        "vr": ratio,
+        "n_daily": observations,
+        "se_iid": float(standard_error),
+        "z_iid": float(z_value),
+        "effective_sample": effective_sample,
+    }
+
+
+# ---------------------------------------------------------------------------
 # B 재실행
 # ---------------------------------------------------------------------------
 def permutation_pvalue(events, universe, signal_id, horizon, iterations, seed):
