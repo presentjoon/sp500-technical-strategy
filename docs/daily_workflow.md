@@ -869,3 +869,21 @@ D8(폐기)과 D9(검증 코드 버그)가 이 문서에서 가장 유익한 절�
 | `docs/glossary.md` | 모르는 용어가 나왔을 때 |
 | `reports/week2_key_numbers.md` | 숫자를 인용하기 전에 정의를 확인할 때 |
 | `reports/week2_artifacts.md` | 어떤 파일이 무엇을 근거지으려 존재하는지 |
+
+### Notion 사본
+
+이 문서는 Notion의 **Road to Columbia → PROJECT → 일일 워크플로우** 페이지에도
+올라간다. **그 페이지는 사본이므로 거기서 고치지 않는다** — 다음 갱신 때 지워진다.
+
+갱신은 자동이다. `docs/daily_workflow.md`를 고쳐서 커밋하면
+`scripts/hooks/post-commit`이 감지해 `scripts/push_notion.py`를 백그라운드로
+돌린다. 약 35초 걸리고, 결과는 `logs/notion_push.log`에 남는다.
+**커밋이 멈추지 않고, 갱신이 실패해도 커밋은 정상이다** — Notion은 사본이고
+레포가 정본이기 때문이다.
+
+훅이 설치돼 있는지 확인하려면 `git config core.hooksPath`가 `scripts/hooks`를
+가리키는지 보면 된다. 새로 클론한 경우 한 번 설정해야 한다.
+
+```
+git config core.hooksPath scripts/hooks
+```

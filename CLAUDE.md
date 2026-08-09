@@ -76,13 +76,15 @@
   `daily_workflow.md`는 **"그게 왜 중요한가"를 처음 보는 사람에게 설명하는** 문서다.
   둘의 역할이 다르므로 한쪽으로 합치지 않는다. 수치는 `reports/week2_key_numbers.md`
   (정본)에서 가져오고, "무슨 의미인가" 절을 비워둔 채 커밋하지 않는다.
-- 그 직후 Notion 사본을 갱신한다. **둘 다 생성물이므로 직접 편집하지 않는다** —
+- Notion 갱신은 **자동이다.** `docs/daily_workflow.md`가 바뀐 커밋에서
+  `scripts/hooks/post-commit`이 `scripts/push_notion.py`를 백그라운드로 돌린다.
+  따로 실행하지 않는다. 결과는 `logs/notion_push.log`에서 확인한다.
+  대상은 PROJECT 아래 `일일 워크플로우` 페이지 **하나뿐**이며, 스크립트가 기존
+  블록을 지우고 시작하므로 다른 페이지를 대상으로 지정하지 않는다.
+- `python scripts/export_notion.py`로 만드는 `docs/notion_project.md`는
+  붙여넣기용 대비책이다. 훅이나 API가 막혔을 때만 쓰고, 평소에는 갱신하지 않아도 된다.
+- **Notion 페이지와 `docs/notion_project.md`는 둘 다 생성물이라 직접 편집하지 않는다.**
   다음 실행에 덮어써지고, 손으로 고치는 순간 정본이 둘이 된다.
-  - `python scripts/push_notion.py` — Notion 페이지를 API로 덮어쓴다 (토큰 필요).
-    대상은 PROJECT 아래 `일일 워크플로우` 페이지 **하나뿐**이다. 다른 페이지를
-    대상으로 지정하지 않는다 — 이 스크립트는 기존 블록을 지우고 시작한다.
-  - `python scripts/export_notion.py` — 붙여넣기용 `docs/notion_project.md` 생성.
-    토큰이 없거나 API가 막혔을 때의 대비책이며, 레포에 사본을 남기는 역할도 한다.
 - 커밋 메시지는 무엇을 왜 바꿨는지 영어로 한 문장. `update`, `수정` 같은 메시지는 쓰지 않는다.
   실패와 수정의 흔적이 남은 히스토리가 완벽한 결과만 올라온 레포보다 신뢰를 준다.
 - 그림은 `figures/`에 png로 저장하고 리포트에서 참조한다.
