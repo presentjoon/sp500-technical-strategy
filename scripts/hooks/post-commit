@@ -1,0 +1,81 @@
+#!/bin/sh
+# ---------------------------------------------------------------------------
+# post-commit — docs/daily_workflow.md 가 바뀐 커밋에서만 Notion을 갱신한다.
+#
+# 설치:
+#     git config core.hooksPath scripts/hooks
+#
+# 해제:
+#     git config --unset core.hooksPath
+#
+# 왜 백그라운드로 돌리는가
+# ------------------------
+# 갱신 한 번에 약 34초가 걸린다 (기존 블록 삭제 + 294개 블록 재생성).
+# 커밋할 때마다 터미널이 34초 멈추면 커밋 자체를 피하게 되고, 그러면
+# "실패와 수정의 흔적이 남은 히스토리"라는 프로젝트 원칙이 무너진다.
+# 그래서 즉시 반환하고 결과는 로그 파일에 남긴다.
+#
+# 왜 실패해도 커밋을 막지 않는가
+# ------------------------------
+# git은 post-commit의 종료 코드를 무시하므로 애초에 커밋을 되돌릴 수 없다.
+# 네트워크가 끊겼거나 토큰이 만료됐다고 해서 커밋이 실패하면 안 되는 것도
+# 맞다 — Notion은 사본이고 레포가 정본이다.
+# ---------------------------------------------------------------------------
+
+set -u
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+TARGET_DOC="docs/daily_workflow.md"
+LOG_FILE="$REPO_ROOT/logs/notion_push.log"
+
+# --- rebase / cherry-pick 중에는 건너뛴다 -----------------------------------
+# 이 작업들은 커밋을 여러 개 연달아 만들므로, 그때마다 갱신하면 같은 일을
+# 반복하면서 API 호출만 낭비한다.
+GIT_DIR_PATH=$(git rev-parse --git-dir)
+
+if [ -d "$GIT_DIR_PATH/rebase-merge" ] || [ -d "$GIT_DIR_PATH/rebase-apply" ]; then
+    exit 0
+fi
+
+if [ -f "$GIT_DIR_PATH/CHERRY_PICK_HEAD" ] || [ -f "$GIT_DIR_PATH/MERGE_HEAD" ]; then
+    exit 0
+fi
+
+# --- 이번 커밋에서 대상 문서가 바뀌었는가 -----------------------------------
+CHANGED=$(git diff-tree --no-commit-id --name-only -r HEAD)
+
+echo "$CHANGED" | grep -q "^${TARGET_DOC}$" || exit 0
+
+# --- 토큰이 있는가 -----------------------------------------------------------
+# 없으면 조용히 넘어가지 않고 한 줄 알린다. 조용히 넘어가면 "갱신됐겠지"라고
+# 믿게 되는데, 그게 이 훅에서 가장 위험한 실패 방식이다.
+if [ -z "${NOTION_TOKEN:-}" ] && [ ! -f "$REPO_ROOT/.env" ]; then
+    echo "[post-commit] NOTION_TOKEN이 없어 Notion 갱신을 건너뜁니다 (.env 확인)."
+    exit 0
+fi
+
+# --- 백그라운드 실행 ---------------------------------------------------------
+mkdir -p "$REPO_ROOT/logs"
+
+{
+    echo ""
+    echo "=========================================================="
+    echo "$(date '+%Y-%m-%d %H:%M:%S')  커밋 $(git rev-parse --short HEAD)"
+    echo "=========================================================="
+} >> "$LOG_FILE"
+
+(
+    cd "$REPO_ROOT" || exit 1
+    PYTHONIOENCODING=utf-8 python scripts/push_notion.py >> "$LOG_FILE" 2>&1
+
+    if [ $? -eq 0 ]; then
+        echo "[성공] $(date '+%H:%M:%S')" >> "$LOG_FILE"
+    else
+        echo "[실패] $(date '+%H:%M:%S') — 위 오류 확인" >> "$LOG_FILE"
+    fi
+) </dev/null >/dev/null 2>&1 &
+
+echo "[post-commit] Notion 갱신을 백그라운드로 시작했습니다 (약 35초)."
+echo "               결과: logs/notion_push.log"
+
+exit 0
