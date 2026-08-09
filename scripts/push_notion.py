@@ -582,6 +582,61 @@ def find_child_page(parent_id, title, token):
     return None
 
 
+def block_text(block):
+    """블록의 표시 텍스트. rich_text가 없는 타입이면 빈 문자열."""
+    body = block.get(block["type"], {})     # -> dict
+    rich_text = body.get("rich_text", [])   # -> list[dict]
+
+    parts = [piece.get("plain_text", "") for piece in rich_text]  # -> list[str]
+
+    return "".join(parts)
+
+
+def find_heading(parent_id, title, token):
+    """본문 속 제목 블록을 찾는다.
+
+    왜 이게 필요한가
+    ----------------
+    Notion에서 "PROJECT 아래"는 두 가지 뜻일 수 있다.
+
+    1. **하위 페이지 PROJECT** — 그 안에 페이지를 만들면 된다
+    2. **본문 속 제목 `## PROJECT`** — 제목은 페이지를 담을 수 없다
+
+    2번인 경우, 그 제목이 **문서의 마지막 제목이면** 페이지 끝에 하위 페이지를
+    만드는 것으로 충분하다. 새 페이지가 그 제목 아래 구간에 놓이기 때문이다.
+    마지막 제목이 아니면 위치가 어긋나므로 그 사실을 알려주고 멈춘다.
+
+    Returns
+    -------
+    (str, bool) | (None, False)
+        (제목 블록 ID, 그 제목이 마지막 제목인가)
+    """
+    children = list_children(parent_id, token)  # -> list[dict]
+
+    heading_types = ("heading_1", "heading_2", "heading_3")  # -> tuple[str]
+
+    found_id = None      # -> str | None
+    found_index = None   # -> int | None
+    last_index = None    # -> int | None
+
+    for index, block in enumerate(children):
+        if block["type"] not in heading_types:
+            continue
+
+        last_index = index
+
+        if block_text(block).strip() == title:
+            found_id = block["id"]
+            found_index = index
+
+    if found_id is None:
+        return None, False
+
+    is_last = (found_index == last_index)  # -> bool
+
+    return found_id, is_last
+
+
 def create_child_page(parent_id, title, token):
     """빈 하위 페이지를 만든다."""
     payload = {
@@ -697,8 +752,14 @@ def main():
         print(f"\n{parent_id} 의 자식 {len(children)}개:")
 
         for block in children:
-            title = child_page_title(block)  # -> str | None
-            label = f"[하위 페이지] {title}" if title else f"[{block['type']}]"
+            page_title = child_page_title(block)  # -> str | None
+
+            if page_title:
+                label = f"[하위 페이지] {page_title}"  # -> str
+            else:
+                text = block_text(block)                            # -> str
+                label = f"[{block['type']}] {text!r}"               # -> str
+
             print(f"  {block['id']}  {label}")
 
         return 0
@@ -710,15 +771,34 @@ def main():
     else:
         parent_id = find_child_page(ROOT_PAGE_ID, PARENT_PAGE_TITLE, token)  # -> str | None
 
-        if parent_id is None:
-            print(
-                f"\n'{PARENT_PAGE_TITLE}' 하위 페이지를 찾지 못했다.\n"
-                "  --list 로 실제 자식 목록을 확인하고, --parent <id> 로 지정할 것.\n"
-                "  PROJECT가 하위 페이지가 아니라 본문 속 제목이면 하위 페이지로 만들어야 한다."
-            )
-            return 1
+        if parent_id is not None:
+            print(f"\n부모: 하위 페이지 {PARENT_PAGE_TITLE} ({parent_id})")
+        else:
+            heading_id, is_last = find_heading(ROOT_PAGE_ID, PARENT_PAGE_TITLE, token)  # -> (str|None, bool)
 
-        print(f"\n부모: {PARENT_PAGE_TITLE} ({parent_id})")
+            if heading_id is None:
+                print(
+                    f"\n'{PARENT_PAGE_TITLE}'을 하위 페이지로도 제목으로도 찾지 못했다.\n"
+                    "  --list 로 실제 자식 목록을 확인하고, --parent <id> 로 지정할 것."
+                )
+                return 1
+
+            if not is_last:
+                print(
+                    f"\n'{PARENT_PAGE_TITLE}'은 본문 속 제목인데 **마지막 제목이 아니다.**\n"
+                    "  Notion에서 제목은 페이지를 담지 못하므로, 페이지 끝에 만들면\n"
+                    "  다른 제목 아래로 들어간다.\n"
+                    f"  해결: Notion에서 '{PARENT_PAGE_TITLE}'을 하위 페이지로 만들거나,\n"
+                    "        --parent <원하는 부모 페이지 id> 로 직접 지정할 것."
+                )
+                return 1
+
+            # 제목이 마지막이면 페이지 끝 = 그 제목 아래 구간이다.
+            parent_id = ROOT_PAGE_ID  # -> str
+            print(
+                f"\n부모: '{PARENT_PAGE_TITLE}'은 본문 속 제목이고 마지막 제목이다.\n"
+                "  → 페이지 끝에 하위 페이지를 만들면 그 제목 아래에 놓인다."
+            )
 
     # --- 대상 페이지 찾기 또는 생성 ---
     target_id = find_child_page(parent_id, TARGET_PAGE_TITLE, token)  # -> str | None
