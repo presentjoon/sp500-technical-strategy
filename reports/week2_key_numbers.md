@@ -147,6 +147,32 @@
 
 ---
 
+## 9-B. D11 산출물 구조
+
+> **숫자 옆에 산출 시점 커밋 해시를 병기한다.** 이 프로젝트의 반복 오류 유형이
+> "출처가 다른 두 시점의 숫자가 같은 이름으로 불리는 것"이므로, 해시가 판정
+> 기준이 된다. 7.80/7.85도 86.1%/80.8%도 같은 유형이었다.
+
+**`reports/day11_metrics.csv`: 23행 × 17열 (`31691ed`)**
+
+| 묶음 | 개수 | 열 |
+|---|---:|---|
+| 식별 | 3 | `kind`, `key`, `name` |
+| 거래 | 3 | `n_trades`, `avg_holding_days`, `exposure_pct` |
+| 수익 | 2 | `total_return_pct`, `cagr_pct` |
+| 위험 | 5 | `ann_vol_pct`, `sharpe`, `sortino`, `mdd_pct`, `calmar` |
+| 거래품질 | 2 | `win_rate_pct`, `profit_factor` |
+| 현금대조 | 2 | `cagr_nocash`, `cash_contrib_pp` |
+
+행 구성: 벤치마크 3 (`kind="benchmark"`) + 20조합 (`kind="strategy"`).
+
+**정정 이력:** `logs/2026-08-11.md`가 최초에 **15열**로 적었다. 15는
+`metrics.METRIC_COLUMNS`(13) + `kind`·`key`의 **중간 단계 값**이고, 그 뒤
+현금 대조 2열을 추가해 저장했다. 파일은 처음부터 17열이었고 **로그 기재가
+틀렸다.** 원문은 `[^1]` 각주와 함께 보존.
+
+---
+
 ## 10. 인용 시 금지 표현
 
 | 쓰지 말 것 | 대신 |
