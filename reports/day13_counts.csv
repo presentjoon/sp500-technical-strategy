@@ -1,0 +1,7 @@
+﻿quintile,n_sig_before,n_ctl_before,n_sig_after,n_ctl_after,min5_pass_after,n_gap_before,cnt_lt20_before,ratio_before,n_gap_after,cnt_lt20_after,ratio_after
+Q1,1,1327,1,54,False,0.0,0.0,,0.0,0.0,
+Q2,2,1265,2,63,False,1.0,0.0,0.0,1.0,0.0,0.0
+Q3,10,1132,7,49,True,9.0,2.0,0.2222222222222222,6.0,0.0,0.0
+Q4,20,1288,12,44,True,19.0,5.0,0.2631578947368421,11.0,0.0,0.0
+Q5,32,1586,12,71,True,31.0,16.0,0.5161290322580645,11.0,0.0,0.0
+TOTAL,65,6598,34,281,,,,,,,
