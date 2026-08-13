@@ -37,7 +37,7 @@
 | D12 | 2026-08-11 | `4c5533a`(사전등록) → `db58ab8` → `a9015c1` | 직전 14일 실현변동성 5분위 층화 순열검정. S1 4지평 (`reports/day12_results.csv`) |
 | D13 | 2026-08-12 | `c10a81f` → `ad2cce1`(폐기·대체) → `92bc93b` → `e4b246d` | 사후 경로변동성 σ_post 층화 순열검정. 원 사전등록은 σ_pre 정의 충돌로 폐기하고 `prereg_day13b.md`로 대체 (`reports/day13_pathvol_results.csv`) |
 | D14 | 2026-08-13 | `78182b1` → `02c6aaf` → `d2d9a85` | 재료 수집 후 실패 분석 문서 작성 (`reports/day14_inputs.md` 216행, `reports/why_it_fails.md` 302행) |
-| D15 | 2026-08-13 | (본 커밋) | 국면 × 신호 거래 성과 행렬 산출(`reports/day15_phase_matrix.csv`), `week2.md` §5·§6 해석 문장 마감(`3ebc937`), 본 문서 작성 |
+| D15 | 2026-08-13 | `442d44a` → `9e7a0d2` | 국면 × 신호 거래 성과 행렬 산출(`reports/day15_phase_matrix.csv`), `week2.md` §5·§6 해석 문장 마감(`3ebc937`), 본 문서 작성 |
 
 출처: `git log`, `docs/daily_workflow.md` D10~D14 절, `logs/2026-08-10.md` ~ `logs/2026-08-12.md`.
 
